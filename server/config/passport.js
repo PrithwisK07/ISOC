@@ -55,22 +55,12 @@ module.exports = function (passport) {
             page++;
           }
 
-          // Filter PRs with "ieeecs" label and gather details
+          // Collect PR data without filtering by label
           let mergedDurations = [];
           let detailedPRs = [];
-          let allowedCommitSHAs = new Set();
 
           for (const pr of allPRs) {
             const number = pr.number;
-
-            const issueDetails = await axios.get(
-              `https://api.github.com/repos/${repoOwner}/${repoName}/issues/${number}`,
-              { headers }
-            );
-            const hasIEEECSLabel = issueDetails.data.labels.some(
-              (label) => label.name.toLowerCase() === "ieeecs"
-            );
-            if (!hasIEEECSLabel) continue;
 
             const prDetails = await axios.get(
               `https://api.github.com/repos/${repoOwner}/${repoName}/pulls/${number}`,
@@ -98,13 +88,6 @@ module.exports = function (passport) {
               merged_at: prData.merged_at,
               repo: `${repoOwner}/${repoName}`,
             });
-
-            // Collect commit SHAs
-            const commitsInPR = await axios.get(
-              `https://api.github.com/repos/${repoOwner}/${repoName}/pulls/${number}/commits`,
-              { headers }
-            );
-            commitsInPR.data.forEach((c) => allowedCommitSHAs.add(c.sha));
           }
 
           // PR metrics
@@ -122,7 +105,7 @@ module.exports = function (passport) {
             avgMergeTime,
           };
 
-          // Filter commits authored by user and part of approved PRs
+          // Fetch all commits authored by the user
           const commitsRes = await axios.get(
             `https://api.github.com/repos/${repoOwner}/${repoName}/commits?author=${username}&per_page=100`,
             { headers }
@@ -130,7 +113,6 @@ module.exports = function (passport) {
 
           const commitDetails = [];
           for (const c of commitsRes.data) {
-            if (!allowedCommitSHAs.has(c.sha)) continue;
             const fullCommit = await axios.get(
               `https://api.github.com/repos/${repoOwner}/${repoName}/commits/${c.sha}`,
               { headers }

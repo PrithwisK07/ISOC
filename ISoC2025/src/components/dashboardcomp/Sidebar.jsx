@@ -4,7 +4,7 @@ import {
     UserRound,
     ChartNoAxesCombined,
     Calendar,
-    GitCommitVertical,
+    GitPullRequest,
     FolderGit
 } from 'lucide-react';
 
@@ -25,7 +25,7 @@ const Sidebar = ({ activeItem, setActiveItem, open, setOpen }) => {
         { id: 'repositories', label: 'Repositories', icon: <FolderGit className="scale-90" /> },
         { id: 'activity', label: 'Activity', icon: <Calendar className="scale-90" /> },
         { id: 'performance', label: 'Performance', icon: <ChartNoAxesCombined className="scale-90" /> },
-        { id: 'commits', label: 'Commits', icon: <GitCommitVertical className="scale-90" /> },
+        { id: 'commits', label: 'PRs', icon: <GitPullRequest className="scale-90" /> },
         { id: 'profile', label: 'Profile', icon: <UserRound className="scale-90" /> },
     ];
 
