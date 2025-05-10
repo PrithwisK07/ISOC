@@ -34,114 +34,166 @@ module.exports = function (passport) {
           const { followers, following, created_at: joinedAt } = userRes.data;
 
           const username = profile.username;
-          const repoOwner = "ieee-cs-bmsit";
+
+          // Choose your target repo
+          const repoOwner = "ieee-cs-bmsit"; // Can be user or org
           const repoName = "ISoC2025";
 
-          // Fetch PRs
-          const q = `repo:${repoOwner}/${repoName} type:pr author:${username}`;
-          let page = 1;
-          let allPRs = [];
+          // Additional repo to track (user-owned)
+          const additionalRepoOwner = "Arnabpaul0101";
+          const additionalRepoName = "CopyPal";
 
-          while (true) {
-            const res = await axios.get(
-              "https://api.github.com/search/issues",
-              {
-                headers,
-                params: { q, per_page: 100, page },
+          const allReposToTrack = [
+            { repoOwner, repoName },
+            { repoOwner: additionalRepoOwner, repoName: additionalRepoName },
+          ];
+
+          // Fetch PRs, Commits, Quality metrics for each tracked repo
+          let allDetailedPRs = [];
+          let allCommitStats = [];
+          let aggregatePullRequestData = {
+            total: 0,
+            open: 0,
+            closed: 0,
+            avgMergeTime: 0,
+          };
+
+          let totalMergedDurations = [];
+
+          for (const { repoOwner, repoName } of allReposToTrack) {
+            const q = `repo:${repoOwner}/${repoName} type:pr author:${username}`;
+            let page = 1;
+            let allPRs = [];
+
+            while (true) {
+              const res = await axios.get(
+                "https://api.github.com/search/issues",
+                {
+                  headers,
+                  params: { q, per_page: 100, page },
+                }
+              );
+              if (res.data.items.length === 0) break;
+              allPRs = allPRs.concat(res.data.items);
+              page++;
+            }
+
+            let mergedDurations = [];
+            let detailedPRs = [];
+
+            for (const pr of allPRs) {
+              const number = pr.number;
+
+              const prDetails = await axios.get(
+                `https://api.github.com/repos/${repoOwner}/${repoName}/pulls/${number}`,
+                { headers }
+              );
+
+              const prData = prDetails.data;
+
+              if (prData.merged_at) {
+                const created = new Date(prData.created_at);
+                const merged = new Date(prData.merged_at);
+                const days = (merged - created) / (1000 * 60 * 60 * 24);
+                mergedDurations.push(days);
+                totalMergedDurations.push(days);
               }
-            );
-            if (res.data.items.length === 0) break;
-            allPRs = allPRs.concat(res.data.items);
-            page++;
-          }
 
-          // Collect PR data without filtering by label
-          let mergedDurations = [];
-          let detailedPRs = [];
+              detailedPRs.push({
+                id: prData.id,
+                number: prData.number,
+                title: prData.title,
+                state: prData.state,
+                created_at: prData.created_at,
+                updated_at: prData.updated_at,
+                html_url: prData.html_url,
+                status: prData.merged_at ? "merged" : prData.state,
+                merged: !!prData.merged_at,
+                merged_at: prData.merged_at,
+                repo: `${repoOwner}/${repoName}`,
+              });
+            }
 
-          for (const pr of allPRs) {
-            const number = pr.number;
+            const pullRequestData = {
+              total: detailedPRs.length,
+              open: detailedPRs.filter((pr) => pr.state === "open").length,
+              closed: detailedPRs.filter(
+                (pr) => pr.state === "closed" || pr.status === "merged"
+              ).length,
+              avgMergeTime: mergedDurations.length
+                ? mergedDurations.reduce((a, b) => a + b, 0) /
+                  mergedDurations.length
+                : 0,
+            };
 
-            const prDetails = await axios.get(
-              `https://api.github.com/repos/${repoOwner}/${repoName}/pulls/${number}`,
+            aggregatePullRequestData.total += pullRequestData.total;
+            aggregatePullRequestData.open += pullRequestData.open;
+            aggregatePullRequestData.closed += pullRequestData.closed;
+
+            allDetailedPRs = allDetailedPRs.concat(detailedPRs);
+
+            // Commits
+            const commitsRes = await axios.get(
+              `https://api.github.com/repos/${repoOwner}/${repoName}/commits?author=${username}&per_page=100`,
               { headers }
             );
 
-            const prData = prDetails.data;
-
-            if (prData.merged_at) {
-              const created = new Date(prData.created_at);
-              const merged = new Date(prData.merged_at);
-              mergedDurations.push((merged - created) / (1000 * 60 * 60 * 24));
+            const commitDetails = [];
+            for (const c of commitsRes.data) {
+              const fullCommit = await axios.get(
+                `https://api.github.com/repos/${repoOwner}/${repoName}/commits/${c.sha}`,
+                { headers }
+              );
+              const stats = fullCommit.data.stats;
+              commitDetails.push({
+                date: c.commit.author.date,
+                message: c.commit.message,
+                additions: stats.additions,
+                deletions: stats.deletions,
+                sha: c.sha,
+                url: c.html_url,
+              });
             }
 
-            detailedPRs.push({
-              id: prData.id,
-              number: prData.number,
-              title: prData.title,
-              state: prData.state,
-              created_at: prData.created_at,
-              updated_at: prData.updated_at,
-              html_url: prData.html_url,
-              status: prData.merged_at ? "merged" : prData.state,
-              merged: !!prData.merged_at,
-              merged_at: prData.merged_at,
-              repo: `${repoOwner}/${repoName}`,
+            allCommitStats.push({
+              repo: repoName,
+              totalCommits: commitDetails.length,
+              commits: commitDetails,
             });
           }
 
-          // PR metrics
-          const avgMergeTime = mergedDurations.length
-            ? mergedDurations.reduce((a, b) => a + b, 0) /
-              mergedDurations.length
+          aggregatePullRequestData.avgMergeTime = totalMergedDurations.length
+            ? totalMergedDurations.reduce((a, b) => a + b, 0) /
+              totalMergedDurations.length
             : 0;
 
-          const pullRequestData = {
-            total: detailedPRs.length,
-            open: detailedPRs.filter((pr) => pr.state === "open").length,
-            closed: detailedPRs.filter(
-              (pr) => pr.state === "closed" || pr.status === "merged"
-            ).length,
-            avgMergeTime,
-          };
-
-          // Fetch all commits authored by the user
-          const commitsRes = await axios.get(
-            `https://api.github.com/repos/${repoOwner}/${repoName}/commits?author=${username}&per_page=100`,
-            { headers }
-          );
-
-          const commitDetails = [];
-          for (const c of commitsRes.data) {
-            const fullCommit = await axios.get(
-              `https://api.github.com/repos/${repoOwner}/${repoName}/commits/${c.sha}`,
+          // Detect if main repoOwner is an org or user
+          let isOrg = false;
+          try {
+            const orgCheck = await axios.get(
+              `https://api.github.com/orgs/${repoOwner}`,
               { headers }
             );
-            const stats = fullCommit.data.stats;
-            commitDetails.push({
-              date: c.commit.author.date,
-              message: c.commit.message,
-              additions: stats.additions,
-              deletions: stats.deletions,
-              sha: c.sha,
-              url: c.html_url,
-            });
+            isOrg = !!orgCheck?.data;
+          } catch (_) {
+            isOrg = false;
           }
 
-          const formattedCommits = {
-            repo: repoName,
-            totalCommits: commitDetails.length,
-            commits: commitDetails,
-          };
-
           // Quality Metrics
-          const reposRes = await axios.get(
-            `https://api.github.com/orgs/${repoOwner}/repos`,
-            {
-              headers,
-            }
-          );
-          const repos = reposRes.data;
+          let repos = [];
+          if (isOrg) {
+            const reposRes = await axios.get(
+              `https://api.github.com/orgs/${repoOwner}/repos`,
+              { headers }
+            );
+            repos = reposRes.data;
+          } else {
+            const reposRes = await axios.get(
+              `https://api.github.com/users/${repoOwner}/repos`,
+              { headers }
+            );
+            repos = reposRes.data;
+          }
 
           const repoCount = repos.length;
           const activeProjects = repos.filter(
@@ -223,22 +275,21 @@ module.exports = function (passport) {
               joinedAt,
               followers,
               following,
-              pullRequests: detailedPRs,
-              commitStats: [formattedCommits],
-              pullRequestData,
+              pullRequests: allDetailedPRs,
+              commitStats: allCommitStats,
+              pullRequestData: aggregatePullRequestData,
               qualityData,
             });
 
             user._loginMessage = `New user registered with ID ${isocId}`;
           } else {
-            // Update fields on login
             user.accessToken = accessToken;
             user.joinedAt = joinedAt;
             user.followers = followers;
             user.following = following;
-            user.pullRequests = detailedPRs;
-            user.commitStats = [formattedCommits];
-            user.pullRequestData = pullRequestData;
+            user.pullRequests = allDetailedPRs;
+            user.commitStats = allCommitStats;
+            user.pullRequestData = aggregatePullRequestData;
             user.qualityData = qualityData;
 
             await user.save();
