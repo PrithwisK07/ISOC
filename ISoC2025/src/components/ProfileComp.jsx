@@ -23,7 +23,7 @@ const ProfileComp = () => {
                 </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm text-gray-300">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-sm text-gray-300">
                 <div>
                     <p className="text-gray-400">Username:</p>
                     <p className="text-white font-medium">{user.username}</p>
@@ -43,6 +43,10 @@ const ProfileComp = () => {
                 <div>
                     <p className="text-gray-400">Following:</p>
                     <p className="text-white font-medium">{user.following}</p>
+                </div>
+                <div>
+                    <p className="text-gray-400">Points:</p>
+                    <p className="text-white font-medium">23</p>
                 </div>
             </div>
         </div>

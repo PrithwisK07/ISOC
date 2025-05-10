@@ -108,7 +108,7 @@ const Overview = () => {
                         </AreaChart>
                     </ResponsiveContainer>
                 ) : (
-                    <div className='text-white text-center'>Loading commit data...</div>
+                    <div className='text-white text-center'>No commit data available</div>
                 )}
             </div>
         </div>
